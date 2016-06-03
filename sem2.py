@@ -1,5 +1,7 @@
 from PIL import Image
 from PIL import ImageFilter
+from dionysus import Simplex, Filtration, StaticPersistence, vertex_cmp, data_cmp, data_dim_cmp, DynamicPersistenceChains
+from sets import Set
 import matplotlib.pyplot as pyplot
 import matplotlib.image as mpimg
 import numpy as np
@@ -173,27 +175,132 @@ def draw_simplicial_complex(simplices, points):
     for simplex in simplices:
         handlers[len(simplex)-1](get_points(points, simplex))
 
-
-images = ["1.tiff", "2.tiff", "3.tiff", "4.tiff", "5.tiff", "6.tiff", "7.tiff"]
-#images = ["2.tiff"]
-debug = True
-for im in images:
-    print "Processing"
-    points = processImage(im, debug=debug)
-    print "point count: ", len(points)
-    if debug:
-        plot_points(points, 7, figure=pyplot.figure(0))
+def cv_method():
+    images = ["1.tiff", "2.tiff", "3.tiff", "4.tiff", "5.tiff", "6.tiff", "7.tiff"]
+    #images = ["2.tiff"]
+    debug = True
+    for im in images:
+        print "Processing"
+        points = processImage(im, debug=debug)
+        print "point count: ", len(points)
+        if debug:
+            plot_points(points, 7, figure=pyplot.figure(0))
+            pyplot.show()
+            
+        radius = 20000
+        cx = alpha(points, radius)
+        print "complex length: ", len(cx)
+        draw_simplicial_complex(cx, points)
+        pyplot.gca().invert_yaxis()
         pyplot.show()
+        print "Processed"
+
+
+def cubic_complex(pixels, size, thresh):
+    retval = []
+    #size = [size[0]/14, size[1]/14]
+    for i in range(0, size[0]):
+        for j in range(0, size[1]):
+            if(pixels[i, j] > thresh):
+                retval.append((i*size[1] + j,))
+                if i < size[0]-1 and pixels[i+1, j] > thresh:
+                    retval.append(((i+1)*size[1]+j,))
+                    retval.append(((i+1)*size[1] + j, i*size[1] + j))
+                if j < size[1]-1 and pixels[i, j+1] > thresh:
+                    retval.append((i*size[1] + j + 1,))
+                    retval.append((i*size[1] + j + 1, i*size[1] + j))
+                if i < size[0]-1 and pixels[i+1, j] > thresh and j < size[1]-1 and pixels[i, j+1] > thresh and pixels[i+1, j+1] > thresh:
+                    a = i*size[1] + j
+                    b = (i+1)*size[1] + j
+                    c = (i+1) * size[1] + j +1
+                    d = i*size[1] + j + 1
+                    retval.append((a, c))
+                    retval.append((b, d))
+                    retval.append((a, b, c))
+                    retval.append((a, c, d))
+                    retval.append((a, b, d))
+                    retval.append((b, c, d))
+                    retval.append((a, b, c, d))
+    return list(retval)
         
-    radius = 20000
-    cx = alpha(points, radius)
-    print "complex length: ", len(cx)
-    draw_simplicial_complex(cx, points)
-    pyplot.gca().invert_yaxis()
-    pyplot.show()
-    print "Processed"
+        
+def comp(lhs, rhs):
+    if len(lhs) != len(rhs):
+        return len(lhs)-len(rhs)
+    for i in range(0, len(lhs)):
+        if(lhs[i] != rhs[i]):
+            return lhs[i] - rhs[i]
+    return 0
+
+        
+def cubic_complex_method():
+    images = ["1.tiff"]
+    #images = ["1.tiff", "2.tiff", "3.tiff", "4.tiff", "5.tiff", "6.tiff", "7.tiff"]
+    thresholds = range(255, -1, -1)
+    #thresholds = [239]
+    for im in images:
+        original = Image.open(im)
+        originalPixels = original.load()
+        processed = Image.new("P", original.size)
+        processedPixels = processed.load()
+        rgb2gray(processedPixels, originalPixels, original.size)
+        points = [[x, y] for x in range(0, processed.size[0]) for y in range(0, processed.size[1])]
+        print "points len: ", len(points)
+        print "image size: ", original.size[0] * original.size[1]
+        for thresh in thresholds: 
+            cc = cubic_complex(processedPixels, processed.size, thresh)
+            print "cc size(", thresh, "): ", len(cc)
+            #draw_simplicial_complex(cc, points)
+            #pyplot.gca().invert_yaxis()
+            #pyplot.show()
+            cc = sorted(cc, cmp=comp)
+            scx = [Simplex(cc[i], i) for i in range(0, len(cc))]
+            f = Filtration(scx, data_cmp)
+            p = DynamicPersistenceChains(f)
+            p.pair_simplices()
+            smap = p.make_simplex_map(f)
+            
+            print "{:>10}{:>10}{:>10}{:>10}".format("First", "Second", "Birth", "Death")
+            counter = 0
+            for i in (i for i in p if i.sign()):
+                b = smap[i]
+                if i.unpaired():
+                    #print "{:>30}{:>30}{:>10}{:>10}".format(b, '', b.data, "inf")
+                    counter += 1 
+                #else:
+                #    d = smap[i.pair()]
+                #    print "{:>30}{:>30}{:>10}{:>10}".format(b, d, b.data, d.data)
+            print "# inf simplices: ", counter
+            
+    
+cubic_complex_method()
+
+'''
+scx = [Simplex((2,),        0),                 # C
+       Simplex((0,),        1),                 # A
+       Simplex((1,),        2),                 # B
+       Simplex((0,1),       3),                 # AB
+       Simplex((1,2),       4),                 # BC
+       Simplex((0,2),       5),                 # AC
+       Simplex((0,1,2),     6),                 # ABC
+]
 
 
+f = Filtration(scx, data_cmp)            
+p = DynamicPersistenceChains(f)
+p.pair_simplices()
+smap = p.make_simplex_map(f)
+
+
+print "{:>10}{:>10}{:>10}{:>10}".format("First", "Second", "Birth", "Death")
+for i in (i for i in p if i.sign()):
+    b = smap[i]
+    if i.unpaired():
+        print "{:>10}{:>10}{:>10}{:>10}".format(b, '', b.data, "inf")
+    else:
+        d = smap[i.pair()]
+        print "{:>10}{:>10}{:>10}{:>10}".format(b, d, b.data, d.data)
+'''
 
 
 
