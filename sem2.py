@@ -175,11 +175,31 @@ def draw_simplicial_complex(simplices, points):
     for simplex in simplices:
         handlers[len(simplex)-1](get_points(points, simplex))
 
+def evalsx(sx, points):
+    if len(sx) == 1:
+        return 0;
+    elif len(sx) == 2:
+        return (points[sx[0]][0]-points[sx[1]][0])**2 + (points[sx[0]][1]-points[sx[1]][1])**2
+    elif len(sx) == 3:
+        l = 0
+        for i in range(0, 3):
+            l += (points[sx[i]][0]-points[sx[(i+1)%3]][0])**2 + (points[sx[i]][1]-points[sx[(i+1)%3]][1])**2
+        return l
+    return 0
+
+def sxcmp(lhs, rhs):
+    if len(lhs[0]) != len(rhs[0]):
+        return len(lhs[0])-len(rhs[0])
+    else: 
+        return lhs[1]-rhs[1]
+    
 def cv_method():
     images = ["1.tiff", "2.tiff", "3.tiff", "4.tiff", "5.tiff", "6.tiff", "7.tiff"]
-    #images = ["2.tiff"]
-    debug = True
-    for im in images:
+    thresholds = [1200, 2000, 1000, 6000, 6000, 19000, 36000]
+    #images = ["1.tiff"]
+    debug = False
+    for idx in range(len(images)):
+        im = images[idx]
         print "Processing"
         points = processImage(im, debug=debug)
         print "point count: ", len(points)
@@ -189,11 +209,87 @@ def cv_method():
             
         radius = 20000
         cx = alpha(points, radius)
-        print "complex length: ", len(cx)
-        draw_simplicial_complex(cx, points)
-        pyplot.gca().invert_yaxis()
+
+        if debug: 
+            draw_simplicial_complex(cx, points)
+            pyplot.gca().invert_yaxis()
+            pyplot.show()
+
+        evaluated = [(sx, evalsx(sx, points)) for sx in cx]
+        evaluated = sorted(evaluated, cmp=sxcmp)
+        
+        scx = []
+        ctr = 0
+        for i in range(0, len(evaluated)):
+            if len(evaluated[i][0]) == 1:
+                scx.append(Simplex(evaluated[i][0], 0))
+            else:
+                ctr+=1
+                scx.append(Simplex(evaluated[i][0], ctr))
+        
+        
+        f = Filtration(scx, data_cmp)
+        p = DynamicPersistenceChains(f)
+        p.pair_simplices()
+        smap = p.make_simplex_map(f)
+        
+        print "{:>20}{:>20}{:>20}{:>20}".format("First", "Second", "Birth", "Death")
+        counter = 0
+        islandcounter = 0
+        islandthresh = thresholds[idx]
+        alivetimes = []
+        print "Simplices with death-birth >", islandthresh, ": "
+
+        lengths = [0, 0, 0]
+        for i in (i for i in p if i.sign()):
+            b = smap[i]
+            if i.unpaired():
+                #print "{:>20}{:>20}{:>10}{:>10}".format(b, '', b.data, "inf")
+                counter += 1 
+                alivetimes.append(len(scx))
+            else:
+                d = smap[i.pair()]
+                alivetimes.append(d.data-b.data)
+                cnt = 0
+                for i in b.vertices:
+                    cnt+=1
+                lengths[cnt-1] += 1
+                if d.data-b.data > islandthresh and cnt == 1:
+                    #print "{:>20}{:>20}{:>10}{:>10}".format(b, d, b.data, d.data)
+                    islandcounter+=1
+        print "Alive times len: ", len(alivetimes)
+        print "# of >", islandthresh, "simplices: ", islandcounter
+        print "# inf simplices: ", counter    
+        print lengths    
+        pyplot.hlines(range(0, lengths[0]), [0] * lengths[0], alivetimes[0:lengths[0]])
+        pyplot.plot(alivetimes[0:lengths[0]], range(0, lengths[0]), 'bo')
+        pyplot.vlines([islandthresh], [0], [lengths[0]], colors='r')        
+        
         pyplot.show()
         print "Processed"
+
+cv_method()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def cubic_complex(pixels, size, thresh):
@@ -273,9 +369,9 @@ def cubic_complex_method():
             print "# inf simplices: ", counter
             
     
+'''
 cubic_complex_method()
 
-'''
 scx = [Simplex((2,),        0),                 # C
        Simplex((0,),        1),                 # A
        Simplex((1,),        2),                 # B
