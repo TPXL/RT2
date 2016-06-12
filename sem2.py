@@ -33,9 +33,9 @@ def threshold(pixels, size, threshold = 127):
     for i in range(0, size[0]-1):
         for j in range(0, size[1]-1):
             if(pixels[i, j] < threshold):
-                pixels[i, j] = 0
+                pixels[i, j] = float(0)
             else:
-                pixels[i, j] = 255
+                pixels[i, j] = float(255)
 
 def rgb2gray(processedPixels, originalPixels, size):
     for i in range(0, size[0]-1):
@@ -43,7 +43,7 @@ def rgb2gray(processedPixels, originalPixels, size):
             processedPixels[i, j] = int((originalPixels[i, j][0] + originalPixels[i, j][1] + originalPixels[i, j][2])/3)
 
 def plotImage(image, subplot):
-    pyplot.figure(0)
+    pyplot.figure(0, figsize=(20, 20))
     pyplot.subplot(3, 3, subplot).imshow(np.asarray(image), cmap="gray")
 
 def pointsFromImage(pixels, size):
@@ -53,6 +53,20 @@ def pointsFromImage(pixels, size):
             if pixels[i, j] > 0:
                 retval.append([i, j])
     return retval
+
+def copyImage(image):
+    copy = Image.new("P", image.size)
+    copyPixels = copy.load()
+    originalPixels = image.load()
+    for i in range(0, copy.size[0]):
+    	for j in range(0, copy.size[1]):
+    		copyPixels[i, j] = originalPixels[i, j]
+    return copy
+
+def invertImage(pixels, size):
+	for i in range(0, size[0]):
+		for j in range(0, size[1]):
+			pixels[i, j] = 255-pixels[i, j]
 
 def processImage(imagename, debug = False, filterRadius=0, imageThreshold=5):
 
@@ -74,14 +88,21 @@ def processImage(imagename, debug = False, filterRadius=0, imageThreshold=5):
         plotImage(processed, 3)
     derivative(processedPixels, processed.size)
     if debug:
-        plotImage(processed, 4)
+    	toPlot = copyImage(processed)
+    	threshold(toPlot.load(), toPlot.size, 1)
+    	invertImage(toPlot.load(), toPlot.size)
+        plotImage(toPlot, 4)
     nonmaxsup(processedPixels, processed.size)
     if debug:
-        plotImage(processed, 5)
+    	toPlot = copyImage(processed)
+    	threshold(toPlot.load(), toPlot.size, 1)
+    	invertImage(toPlot.load(), toPlot.size)
+        plotImage(toPlot, 5)
     threshold(processedPixels, processed.size, threshold = imageThreshold)
     if debug:
-        plotImage(processed, 6)
-    
+        toPlot = copyImage(processed)
+    	invertImage(toPlot.load(), processed.size)
+        plotImage(toPlot, 6)
     retval = pointsFromImage(processedPixels, processed.size)
     return retval
 
@@ -96,7 +117,7 @@ def plot_points(points, plotnum, figure=None, radius=0, color='r'):
     circles are drawn using red color.
     """
     xs, ys = map(list, zip(*points))
-    pyplot.axis([min(xs)-1, max(xs)+1,min(ys)-1,max(ys)+1])
+    pyplot.axis([min(xs)-1, max(xs)+1,max(ys)+1, min(ys)-1])
     pyplot.subplot(3, 3, plotnum).invert_yaxis()
     pyplot.subplot(3, 3, plotnum).plot(xs, ys, 'ro')
     if radius > 0:
@@ -197,22 +218,28 @@ def cv_method():
     images = ["1.tiff", "2.tiff", "3.tiff", "4.tiff", "5.tiff", "6.tiff", "7.tiff"]
     thresholds = [1200, 2000, 1000, 6000, 6000, 19000, 36000]
     #images = ["1.tiff"]
-    debug = False
+    debug = True
     for idx in range(len(images)):
         im = images[idx]
         print "Processing"
         points = processImage(im, debug=debug)
         print "point count: ", len(points)
         if debug:
-            plot_points(points, 7, figure=pyplot.figure(0))
+            pyplot.gca().invert_yaxis()
+            plot_points(points, 7, figure=pyplot.figure(0, figsize=(20, 20)))
+            pyplot.savefig(str(idx) + ".jpg")
             pyplot.show()
+            
             
         radius = 20000
         cx = alpha(points, radius)
 
         if debug: 
+            pyplot.figure(0, figsize=(20, 20))
             draw_simplicial_complex(cx, points)
-            pyplot.gca().invert_yaxis()
+            pyplot.gca().invert_yaxis()  
+            pyplot.savefig(str(idx) + "_alpha.jpg")
+            
             pyplot.show()
 
         evaluated = [(sx, evalsx(sx, points)) for sx in cx]
@@ -261,10 +288,11 @@ def cv_method():
         print "# of >", islandthresh, "simplices: ", islandcounter
         print "# inf simplices: ", counter    
         print lengths    
+        pyplot.figure(0, figsize=(20, 20))
         pyplot.hlines(range(0, lengths[0]), [0] * lengths[0], alivetimes[0:lengths[0]])
         pyplot.plot(alivetimes[0:lengths[0]], range(0, lengths[0]), 'bo')
         pyplot.vlines([islandthresh], [0], [lengths[0]], colors='r')        
-        
+        pyplot.savefig(str(idx) + "_persistence.jpg")
         pyplot.show()
         print "Processed"
 
